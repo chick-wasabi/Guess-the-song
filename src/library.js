@@ -57,22 +57,15 @@ export function mountLibrary(dialog, { startCollection, initialQuery = "" }) {
     });
     const panel = dialog.querySelector("#library-panel");
     if (tab === "search")
-      panel.innerHTML = `<form id="music-search"><label class="sr-only" for="music-query">Artist or song</label><div class="search-box"><input id="music-query" maxlength="200" minlength="2" placeholder="Artist or song…" value="${esc(initialQuery)}" required><button class="primary" type="submit">Search</button></div></form><div class="artist-chips">${["KR$NA", "Seedhe Maut", "Raftaar"].map((a) => `<button data-artist="${esc(a)}">${esc(a)}</button>`).join("")}</div><p class="preview-note">Real recordings via Deezer previews. Excerpts may start mid-song.</p><p id="library-status" role="status"></p><div id="search-results"></div><div id="selection-bar"></div>`;
+      panel.innerHTML = `<form id="music-search"><label class="sr-only" for="music-query">Artist or song</label><div class="search-box"><input id="music-query" maxlength="200" minlength="2" placeholder="Artist or song…" value="${esc(initialQuery)}" required><button class="primary" type="submit">Search</button></div></form><p id="library-status" role="status"></p><div id="search-results"></div><div id="selection-bar"></div>`;
     else if (tab === "spotify")
-      panel.innerHTML = `<form id="playlist-form"><label for="playlist-url">Public Spotify playlist</label><input type="url" id="playlist-url" placeholder="https://open.spotify.com/playlist/…" required><button class="primary" type="submit">Find my songs</button></form><p class="preview-note">No Spotify login. Read publicly listed titles, then match them to Deezer audio previews. Spotify’s public page may list only part of a playlist; private playlists aren’t supported.</p><p id="library-status" role="status"></p><div id="import-report"></div>`;
+      panel.innerHTML = `<form id="playlist-form"><label for="playlist-url">Public Spotify playlist</label><input type="url" id="playlist-url" placeholder="https://open.spotify.com/playlist/…" required><button class="primary" type="submit">Find my songs</button></form><p id="library-status" role="status"></p><div id="import-report"></div>`;
     else
-      panel.innerHTML = `<form id="tracklist-form"><label for="tracklist">Paste song names, one per line</label><textarea id="tracklist" rows="6" maxlength="60000" placeholder="KR$NA - No Cap\nSeedhe Maut - Nanchaku\nRaftaar - Saza-E-Maut" required></textarea><p class="preview-note">Artist - Song. Names only; no audio downloads. Up to 500 tracks.</p><button class="primary" type="submit">Find these songs</button></form><p id="library-status" role="status"></p><div id="import-report"></div>`;
+      panel.innerHTML = `<form id="tracklist-form"><label for="tracklist">Paste song names, one per line</label><textarea id="tracklist" rows="6" maxlength="60000" placeholder="Artist - Song\nArtist - Another song" required></textarea><button class="primary" type="submit">Find these songs</button></form><p id="library-status" role="status"></p><div id="import-report"></div>`;
     panel.querySelector("#music-search")?.addEventListener("submit", (e) => {
       e.preventDefault();
       search(panel.querySelector("#music-query").value);
     });
-    panel.querySelectorAll("[data-artist]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          panel.querySelector("#music-query").value = b.dataset.artist;
-          search(b.dataset.artist);
-        }),
-    );
     panel
       .querySelector("#playlist-form")
       ?.addEventListener("submit", async (e) => {
@@ -111,7 +104,7 @@ export function mountLibrary(dialog, { startCollection, initialQuery = "" }) {
     abort();
     controller = new AbortController();
     const ticket = controller;
-    status("Finding playable songs…");
+    status("Finding songs…");
     try {
       const data = await musicRequest(
         `/api/search?q=${encodeURIComponent(query)}`,
@@ -121,8 +114,8 @@ export function mountLibrary(dialog, { startCollection, initialQuery = "" }) {
       results = data.tracks;
       status(
         results.length
-          ? `${results.length} playable previews. Pick your tracks.`
-          : "No playable previews found. Try another artist or a specific title.",
+          ? `${results.length} songs. Pick your tracks.`
+          : "No songs found. Try another search.",
       );
       drawResults();
       selectionBar();
@@ -137,7 +130,7 @@ export function mountLibrary(dialog, { startCollection, initialQuery = "" }) {
     list.innerHTML = results
       .map(
         (t) =>
-          `<label class="track-row"><input type="checkbox" data-track="${esc(t.id)}" ${selected.has(t.id) ? "checked" : ""}><span><strong>${esc(t.title)}</strong><small>${esc(t.artist)}${t.explicit ? " · Explicit" : ""}</small></span><span class="track-source">DEEZER</span></label>`,
+          `<label class="track-row"><input type="checkbox" data-track="${esc(t.id)}" ${selected.has(t.id) ? "checked" : ""}><span><strong>${esc(t.title)}</strong><small>${esc(t.artist)}${t.explicit ? " · Explicit" : ""}</small></span></label>`,
       )
       .join("");
     list.querySelectorAll("[data-track]").forEach(
@@ -185,7 +178,7 @@ export function mountLibrary(dialog, { startCollection, initialQuery = "" }) {
     cancel.textContent = "Cancel import";
     cancel.onclick = () => {
       abort();
-      status("Import canceled. Your current game is unchanged.");
+      status("Import canceled.");
       form.querySelector("button").disabled = false;
       cancel.remove();
     };
@@ -197,8 +190,7 @@ export function mountLibrary(dialog, { startCollection, initialQuery = "" }) {
         throw new Error("No songs were listed. Try pasting a track list.");
       const matches = await resolvePlaylist(report.tracks, {
         signal: ticket.signal,
-        progress: (done, total) =>
-          status(`Matching previews: ${done} / ${total}…`),
+        progress: (done, total) => status(`Finding songs: ${done} / ${total}…`),
       });
       if (ticket !== controller || !dialog.open) return;
       const playable = [
@@ -208,16 +200,15 @@ export function mountLibrary(dialog, { startCollection, initialQuery = "" }) {
       ];
       const unavailable = matches.filter((m) => !m.track);
       status(
-        `${matches.length} listed · ${playable.length} unique playable · ${unavailable.length} unmatched`,
+        `${playable.length} song${playable.length === 1 ? "" : "s"} ready${unavailable.length ? ` · ${unavailable.length} unavailable` : ""}`,
       );
-      out.innerHTML = `${report.warning ? `<p class="import-warning">${esc(report.warning)}</p>` : ""}<p class="preview-note">${esc(report.name)}${report.total ? ` · Spotify reports ${report.total} tracks` : ""}. Previews may start mid-song. Only matched recordings enter the game.</p>${unavailable.length ? `<details><summary>${unavailable.length} songs without an exact playable match</summary><ul>${unavailable.map((m) => `<li>${esc(m.input.artist)} — ${esc(m.input.title)}</li>`).join("")}</ul></details>` : ""}<button class="primary" id="play-import" ${playable.length ? "" : "disabled"}>Play ${playable.length} matched track${playable.length === 1 ? "" : "s"}</button>`;
+      out.innerHTML = `<p class="collection-title">${esc(report.name)}</p>${unavailable.length ? `<details><summary>${unavailable.length} unavailable songs</summary><ul>${unavailable.map((m) => `<li>${esc(m.input.artist)} — ${esc(m.input.title)}</li>`).join("")}</ul></details>` : ""}<button class="primary" id="play-import" ${playable.length ? "" : "disabled"}>Play ${playable.length} song${playable.length === 1 ? "" : "s"}</button>`;
       out.querySelector("#play-import").onclick = () =>
         startCollection(playable, report.name);
     } catch (e) {
       if (e.name !== "AbortError" && ticket === controller) {
         status(e.message, true);
-        out.innerHTML =
-          '<p class="preview-note">No new game started. Try again or use a track list.</p>';
+        out.innerHTML = "";
       }
     } finally {
       if (ticket === controller) {

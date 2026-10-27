@@ -43,3 +43,36 @@ test("real HTTP routing validates JSON, preserves errors, and passes through ass
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("Vercel entry accepts pre-parsed JSON request bodies and serves health", async () => {
+  const { default: entry } = await import("../api/[...path].js");
+  const invoke = async (req) => {
+    let status, body;
+    const res = {
+      writeHead: (s) => {
+        status = s;
+      },
+      end: (value) => {
+        body = JSON.parse(value);
+      },
+    };
+    await entry(req, res);
+    return { status, body };
+  };
+  let result = await invoke({ method: "GET", url: "/api/health" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.apiVersion, 1);
+  result = await invoke({
+    method: "POST",
+    url: "/api/track-list",
+    body: { text: "Artist - Song" },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.tracks[0].title, "Song");
+  result = await invoke({
+    method: "POST",
+    url: "/api/track-list",
+    body: "not json",
+  });
+  assert.equal(result.status, 400);
+});

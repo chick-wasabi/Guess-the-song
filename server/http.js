@@ -1,5 +1,17 @@
 import { CatalogError, parseTrackList } from "./catalog.js";
 async function readJson(req) {
+  // Vercel supplies an already-parsed body; standalone Node supplies a stream.
+  if (req.body !== undefined) {
+    if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body))
+      return req.body;
+    try {
+      return JSON.parse(
+        Buffer.isBuffer(req.body) ? req.body.toString("utf8") : req.body,
+      );
+    } catch {
+      throw new CatalogError("Invalid request.", 400, "INVALID_REQUEST");
+    }
+  }
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
@@ -27,6 +39,12 @@ export function catalogHandler(service) {
       res.end(JSON.stringify(data));
     };
     try {
+      if (req.method === "GET" && url.pathname === "/api/health")
+        return send(200, {
+          status: "ok",
+          apiVersion: 1,
+          revision: process.env.VERCEL_GIT_COMMIT_SHA || null,
+        });
       if (req.method === "GET" && url.pathname === "/api/search")
         return send(200, await service.search(url.searchParams.get("q")));
       if (req.method === "GET" && url.pathname === "/api/playlist")

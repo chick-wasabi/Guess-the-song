@@ -67,14 +67,14 @@ export function parseSpotifyPlaylist(html) {
   }
   if (!entity)
     throw new CatalogError(
-      "Spotify did not expose a public track list. Try a public playlist or paste a track list instead.",
+      "Couldn’t open this playlist. Check its link and visibility.",
       422,
       "PLAYLIST_UNAVAILABLE",
     );
   const list = entity?.trackList;
   if (!Array.isArray(list) || !list.length)
     throw new CatalogError(
-      "This playlist is private, empty, or unavailable to public visitors. Paste a track list instead.",
+      "Couldn’t open this playlist. Check its link and visibility.",
       422,
       "PLAYLIST_UNAVAILABLE",
     );
@@ -98,18 +98,50 @@ export function parseSpotifyPlaylist(html) {
         t.title.trim() &&
         t.subtitle.trim(),
     )
-    .map((t) => ({
-      title: t.title.slice(0, 300),
-      artist: t.subtitle.slice(0, 300),
-      spotifyId:
+    .map((t) => {
+      const spotifyId =
         typeof t.uri === "string" &&
         /^spotify:track:[a-zA-Z0-9]{22}$/.test(t.uri)
           ? t.uri.split(":").at(-1)
+          : null;
+      const track = {
+        title: t.title.slice(0, 300),
+        artist: t.subtitle.slice(0, 300),
+        spotifyId,
+      };
+      let preview;
+      try {
+        preview = new URL(t.audioPreview?.url);
+      } catch {
+        return { ...track, preview: null };
+      }
+      const valid =
+        spotifyId &&
+        t.isPlayable !== false &&
+        preview.protocol === "https:" &&
+        preview.hostname === "p.scdn.co" &&
+        !preview.port &&
+        !preview.username &&
+        !preview.password &&
+        /^\/mp3-preview\/[a-f0-9]{40}$/.test(preview.pathname);
+      return {
+        ...track,
+        preview: valid
+          ? {
+              id: `spotify:${spotifyId}`,
+              title: track.title,
+              artist: track.artist,
+              url: preview.href,
+              source: "spotify",
+              sourceUrl: `https://open.spotify.com/track/${spotifyId}`,
+              clipKind: "preview",
+            }
           : null,
-    }));
+      };
+    });
   if (!tracks.length)
     throw new CatalogError(
-      "Spotify returned no readable track names.",
+      "No songs found in this playlist.",
       422,
       "PLAYLIST_UNAVAILABLE",
     );
@@ -129,14 +161,14 @@ export function parseSpotifyPlaylist(html) {
 export function previewTrack(item) {
   let audio, link;
   try {
-    audio = new URL(item.preview);
-    link = new URL(item.link);
+    audio = new URL(item.previewUrl);
+    link = new URL(item.trackViewUrl);
   } catch {
     return null;
   }
   if (
     audio.protocol !== "https:" ||
-    !audio.hostname.endsWith(".dzcdn.net") ||
+    audio.hostname !== "audio-ssl.itunes.apple.com" ||
     audio.username ||
     audio.password ||
     audio.port
@@ -144,30 +176,30 @@ export function previewTrack(item) {
     return null;
   if (
     link.protocol !== "https:" ||
-    !["www.deezer.com", "deezer.com"].includes(link.hostname) ||
+    !["music.apple.com", "itunes.apple.com"].includes(link.hostname) ||
     link.username ||
     link.password ||
     link.port
   )
     return null;
   if (
-    !Number.isSafeInteger(item.id) ||
-    typeof item.title !== "string" ||
-    typeof item.artist?.name !== "string" ||
-    !item.title.trim() ||
-    !item.artist.name.trim() ||
-    item.readable === false
+    !Number.isSafeInteger(item.trackId) ||
+    typeof item.trackName !== "string" ||
+    typeof item.artistName !== "string" ||
+    !item.trackName.trim() ||
+    !item.artistName.trim() ||
+    item.kind !== "song"
   )
     return null;
   return {
-    id: `deezer:${item.id}`,
-    title: item.title,
-    artist: item.artist.name,
+    id: `apple:${item.trackId}`,
+    title: item.trackName,
+    artist: item.artistName,
     url: audio.href,
-    source: "deezer",
+    source: "apple",
     sourceUrl: link.href,
     clipKind: "preview",
-    explicit: Boolean(item.explicit_lyrics),
+    explicit: item.trackExplicitness === "explicit",
   };
 }
 function titleKey(value) {
@@ -187,7 +219,11 @@ export function findMatch(input, candidates) {
   return (
     candidates.find(
       (t) =>
-        titleKey(t.title) === title && artists.includes(normalize(t.artist)),
+        titleKey(t.title) === title &&
+        t.artist
+          .split(/,| & | feat\.? | ft\.? /i)
+          .map(normalize)
+          .includes(artists[0]),
     ) || null
   );
 }
@@ -229,10 +265,10 @@ export function createCatalogService({ fetchImpl = fetchUpstream } = {}) {
     const key = url.toString(),
       cached = cache.get(key);
     if (cached && cached.until > Date.now()) return cached.value;
-    if (new URL(url).hostname === "api.deezer.com") {
+    if (new URL(url).hostname === "itunes.apple.com") {
       const now = Date.now();
       const scheduled = Math.max(now, nextProviderRequest);
-      nextProviderRequest = scheduled + 175;
+      nextProviderRequest = scheduled + 3100;
       if (scheduled > now)
         await new Promise((resolve) => setTimeout(resolve, scheduled - now));
     }
@@ -245,7 +281,7 @@ export function createCatalogService({ fetchImpl = fetchUpstream } = {}) {
       });
     } catch {
       throw new CatalogError(
-        "The music service could not be reached. Check the server’s network access and try again.",
+        "Music is temporarily unavailable. Try again shortly.",
         502,
         "NETWORK_BLOCKED",
       );
@@ -266,7 +302,7 @@ export function createCatalogService({ fetchImpl = fetchUpstream } = {}) {
       result = kind === "html" ? raw : JSON.parse(raw);
     } catch {
       throw new CatalogError(
-        "The music service returned an unreadable response.",
+        "Music is temporarily unavailable. Try again shortly.",
         502,
       );
     }
@@ -292,16 +328,18 @@ export function createCatalogService({ fetchImpl = fetchUpstream } = {}) {
           400,
           "INVALID_QUERY",
         );
-      const url = new URL("https://api.deezer.com/search");
-      url.searchParams.set("q", query.trim());
+      const url = new URL("https://itunes.apple.com/search");
+      url.searchParams.set("term", query.trim());
+      url.searchParams.set("entity", "song");
+      url.searchParams.set("country", "IN");
       url.searchParams.set("limit", "50");
       const data = await request(url, "json");
-      if (!Array.isArray(data?.data))
+      if (!Array.isArray(data?.results))
         throw new CatalogError(
-          "The music service returned no readable results.",
+          "Couldn’t find songs right now. Please try again.",
           502,
         );
-      return { tracks: data.data.map(previewTrack).filter(Boolean) };
+      return { tracks: data.results.map(previewTrack).filter(Boolean) };
     },
     async playlist(input) {
       const id = playlistId(input);
@@ -334,7 +372,7 @@ export function createCatalogService({ fetchImpl = fetchUpstream } = {}) {
       // Keep upstream concurrency at one for playlist matching.
       for (const input of tracks) {
         const clean = (s) => s.replace(/["\\]/g, " ").trim();
-        const query = `artist:"${clean(input.artist.split(",")[0]).slice(0, 80)}" track:"${clean(input.title).slice(0, 80)}"`;
+        const query = `${clean(input.title).slice(0, 100)} ${clean(input.artist.split(",")[0]).slice(0, 80)}`;
         const { tracks: candidates } = await this.search(query);
         result.push({ input, track: findMatch(input, candidates) });
       }

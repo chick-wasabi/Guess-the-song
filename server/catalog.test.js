@@ -9,12 +9,12 @@ import {
   createCatalogService,
 } from "./catalog.js";
 const raw = (id = 1, title = "No Cap", artist = "KR$NA") => ({
-  id,
-  title,
-  artist: { name: artist },
-  preview: `https://cdnt-preview.dzcdn.net/api/preview-${id}.mp3`,
-  link: `https://www.deezer.com/track/${id}`,
-  readable: true,
+  trackId: id,
+  trackName: title,
+  artistName: artist,
+  kind: "song",
+  previewUrl: `https://audio-ssl.itunes.apple.com/preview-${id}.m4a`,
+  trackViewUrl: `https://music.apple.com/in/song/${id}`,
 });
 const html = (entity) =>
   `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { state: { data: { entity } } } } })}</script></html>`;
@@ -72,14 +72,14 @@ test("private/unavailable/changed Spotify pages fail clearly", () => {
     assert.throws(() => parseSpotifyPlaylist(body));
 });
 test("only playable provider audio and attribution links survive normalization", () => {
-  assert.equal(previewTrack(raw()).source, "deezer");
+  assert.equal(previewTrack(raw()).source, "apple");
   for (const input of [
-    { ...raw(), preview: null },
-    { ...raw(), readable: false },
-    { ...raw(), preview: "http://cdnt-preview.dzcdn.net/x.mp3" },
-    { ...raw(), preview: "https://cdnt-preview.dzcdn.net.evil.test/x" },
-    { ...raw(), link: "javascript:alert(1)" },
-    { ...raw(), artist: {} },
+    { ...raw(), previewUrl: null },
+    { ...raw(), kind: "podcast" },
+    { ...raw(), previewUrl: "http://audio-ssl.itunes.apple.com/x.mp3" },
+    { ...raw(), previewUrl: "https://audio-ssl.itunes.apple.com.evil.test/x" },
+    { ...raw(), trackViewUrl: "javascript:alert(1)" },
+    { ...raw(), artistName: null },
   ])
     assert.equal(previewTrack(input), null);
 });
@@ -108,9 +108,9 @@ test("catalog search fetches only the fixed provider and caches successful respo
   const service = createCatalogService({
     fetchImpl: async (url) => {
       calls++;
-      assert.equal(url.hostname, "api.deezer.com");
-      assert.equal(url.searchParams.get("q"), "KR$NA");
-      return new Response(JSON.stringify({ data: [raw()] }));
+      assert.equal(url.hostname, "itunes.apple.com");
+      assert.equal(url.searchParams.get("term"), "KR$NA");
+      return new Response(JSON.stringify({ results: [raw()] }));
     },
   });
   assert.equal((await service.search("KR$NA")).tracks.length, 1);
@@ -143,13 +143,13 @@ test("network denial, provider error and rate limits remain explicit failures", 
 });
 test("resolve preserves an unmatched track instead of selecting a wrong recording", async () => {
   const service = createCatalogService({
-    fetchImpl: async () => new Response(JSON.stringify({ data: [raw()] })),
+    fetchImpl: async () => new Response(JSON.stringify({ results: [raw()] })),
   });
   const { results } = await service.resolve([
     { title: "No Cap", artist: "KR$NA" },
     { title: "No Cap", artist: "Someone else" },
   ]);
-  assert.equal(results[0].track.id, "deezer:1");
+  assert.equal(results[0].track.id, "apple:1");
   assert.equal(results[1].track, null);
   await assert.rejects(
     service.resolve(Array(9).fill({ title: "No Cap", artist: "KR$NA" })),
@@ -173,5 +173,32 @@ test("public metadata parser supports base64 embed formats and artist arrays", (
     );
     assert.equal(parsed.tracks[0].artist, "Artist A, Artist B");
     assert.equal(parsed.tracks[0].title, "Song");
+  }
+});
+
+test("playlist exposes the exact public Spotify preview without cross-catalog matching", () => {
+  const id = "1234567890123456789012";
+  const audio = "https://p.scdn.co/mp3-preview/" + "a".repeat(40);
+  const item = {
+    title: "Song",
+    subtitle: "Artist",
+    uri: `spotify:track:${id}`,
+    isPlayable: true,
+    audioPreview: { url: audio },
+  };
+  const parsed = parseSpotifyPlaylist(html({ name: "Mix", trackList: [item] }));
+  assert.equal(parsed.tracks[0].preview.source, "spotify");
+  assert.equal(parsed.tracks[0].preview.url, audio);
+  for (const url of [
+    "http://p.scdn.co/mp3-preview/" + "a".repeat(40),
+    "https://p.scdn.co.evil.test/mp3-preview/" + "a".repeat(40),
+    "https://p.scdn.co/not-a-preview",
+  ]) {
+    assert.equal(
+      parseSpotifyPlaylist(
+        html({ name: "Mix", trackList: [{ ...item, audioPreview: { url } }] }),
+      ).tracks[0].preview,
+      null,
+    );
   }
 });

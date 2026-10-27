@@ -1,69 +1,17 @@
 # Needle
 
-A mobile-first song guessing website with artist search, public Spotify playlist metadata import, and Deezer audio previews. Play solo or pass the phone between 2–6 people. No song downloads or Spotify login are required by the implemented flow.
-
-**Live integration status:** the catalog adapter and UI are implemented and tested with controlled provider responses. Cloud egress currently blocks the reference sites, Spotify pages, and Deezer. Actual catalog coverage, playlist extraction against today's Spotify pages, and real-provider audio playback have **not** been verified. Do not describe this as a completed live Spotify integration. Run the live check below after network access is enabled.
+Mobile-first song guessing. Pick songs, paste a public Spotify playlist, play solo, or pass the phone between friends.
 
 ## Run
 
-Node **22.19+** (Node 24 recommended) and npm are required.
+Node 22.19+ (Node 24 recommended):
 
 ```sh
 npm ci --cache /workspace/.npm-cache
 npm run dev
 ```
 
-This starts the Node music backend and Vite frontend together on port 5173. The proxy-aware upstream client uses the machine's existing proxy configuration and TLS verification. No credentials are needed for the currently implemented public metadata/preview approach. Restart the server after changing backend code.
-
-Production:
-
-```sh
-npm run build
-npm start
-```
-
-`npm start` and `npm run preview` serve both `dist/` and `/api/` on port 4173. `PORT` or `--port` changes the port. Deploy to a Node-capable host; a static-only host would need a separately deployed backend. No web deployment is configured.
-
-## Music flow
-
-- **Find music:** search an artist or song, choose recordings with provider previews, and start a session. KR$NA, Seedhe Maut, and Raftaar are editable search shortcuts, not claims of verified catalog coverage.
-- **Spotify link:** validate a public `https://open.spotify.com/playlist/…` URL, fetch its public embed page, extract visible titles/artists, and find conservative title-and-artist matches on Deezer. There is no Spotify audio extraction, Spotify SDK, account login, private-playlist access, or API-token harvesting.
-- **Track list:** paste `Artist - Song` lines, up to 500. This imports names only; it does not require audio downloads.
-- **Import review:** show listed names, unique playable matches, unmatched songs, and the warning about public-page truncation **before** starting a game. A provider outage or canceled import leaves the current collection unchanged. Exact title/artist matching avoids silently substituting a remix or unrelated recording, but can miss legitimate versions or spelling variants.
-- **Gameplay:** hear 0.1, 0.5, 1, 2, 5, or 10 seconds, with rewards decreasing from 1,000 to 100 points. Replaying an earlier clue cannot restore points. After guessing or revealing, play up to 30 seconds and follow the Deezer attribution link if desired.
-- **Friends:** alternate turns on the same device. This is not online multiplayer. For equal turn counts, use a multiple of the player count. Scores and collection state are tab-local and reset on reload.
-
-**Provider previews are excerpts of real recordings; they can start mid-song.** Playing from the beginning of the preview does not mean playing the beginning of the original song. Full-song opening-tune gameplay and guaranteed coverage of an entire playlist remain unresolved requirements. A preview-only source cannot guarantee either.
-
-The old demo collection and local-file upload flow have been removed. `tests/fixtures/clip.wav` is a synthetic audio fixture for browser decoding/timing tests only and is not included in the production bundle or exposed as a game collection.
-
-## Network and live verification
-
-Required application destinations: `api.deezer.com`, `open.spotify.com`, and provider audio hosts under `*.dzcdn.net`. The environment draft also includes the supplied reference-game domains and official provider-documentation domains for investigation. Saving the draft alone does not apply runtime network changes or publish the environment.
-
-After the environment settings are saved and the prepared environment is published, run:
-
-```sh
-npm run check:catalog
-npm run check:catalog -- 'https://open.spotify.com/playlist/YOUR_PUBLIC_PLAYLIST_ID'
-```
-
-The check searches the three requested artists, requires preview results, and requests audio bytes through the configured proxy with TLS verification. Passing verifies basic endpoint access and audio delivery; it does not establish source terms, every catalog match, original-song opening alignment, or browser playback. Then verify search, playlist import, and preview playback in a real browser against the live providers.
-
-## Evidence and source limitations
-
-Direct requests to Songless, the linked Play Store listing, Spotify policy, Apple Search, and Deezer endpoints received cloud-proxy HTTP 403. Their current pages and the exact reference apps' audio implementations were not inspected successfully. A proxy-aware Node client successfully reached `registry.npmjs.org`, confirming that the client uses the supported proxy route; the Deezer destination remained blocked.
-
-The published [`spotify-url-info` 3.3.3](https://www.npmjs.com/package/spotify-url-info) documentation and source were inspected through the npm registry. They document public embed metadata extraction without an API key, explicitly limit `getTracks` to the first 100 tracks, and warn that the schema can change. Our focused parser handles the documented public embed data formats but is not an official Spotify API and still needs a live compatibility check. No dependency on that package is installed.
-
-Provider previews and public metadata are not an unrestricted music license. Current provider terms and suitability for this use have not been verified; preview access alone is not approval. No claim is made that Spotify Premium licenses a third-party trivia game. Useful original sources to review when network access works:
-
-- https://developer.spotify.com/policy
-- https://developers.deezer.com/api/search
-- https://playdaily.org/songless
-- https://play.google.com/store/apps/details?id=com.ricocorp.spotiguess
-
-## Validation
+Vite serves the frontend **and the music API** on port 5173. The API plugin also runs with `npm run preview` and direct `vite` / `vite preview` commands. After a production build, `npm start` runs the standalone Node server on port 4173.
 
 ```sh
 npm test
@@ -71,10 +19,41 @@ npm run build
 npm run test:e2e
 ```
 
-The browser suite uses `/usr/bin/chromium`; set `CHROMIUM_PATH` for another installed Chromium. It starts the full development server if needed. Server/logic tests verify URL validation, public data formats, safe preview sources, conservative matching, provider failures, HTTP routes, and scoring. Browser tests use mocked provider metadata plus a test-only waveform to verify the import UI, real browser audio decoding/timing, missing matches, batching, cancellation, playback failures, scores, friend sessions, and 320/360/390/430/1440-pixel layouts. These tests do **not** prove live provider compatibility or music coverage, and are not real Android or Safari tests.
+## Vercel
 
-## Screenshots
+The existing site is https://guess-the-song-xi.vercel.app/ . The repository now includes `api/[...path].js`, a Node serverless entry, and `vercel.json`. A static `dist/` deployment alone cannot serve music requests. Deploy this repository with its root directory set to the repository root so Vercel includes the API function. Use the normal `npm run build` command and `dist` output. The serverless handler accepts Vercel's pre-parsed request body as well as standalone Node streams.
 
-[Mobile entry](docs/screenshots/mobile.png) · [Desktop entry](docs/screenshots/desktop.png) · [Game layout](docs/screenshots/game-mobile.png)
+`GET /api/health` must return JSON with `status: "ok"`, `apiVersion: 1`, and the Vercel commit revision when supplied by Vercel. Before this fix, the user's deployed API returned HTTP 404. A push is not proof of a successful Vercel deployment: inspect this endpoint and the relevant music routes after deployment.
 
-The game-layout screenshot uses controlled test metadata. It demonstrates the interface, not successful live playback of the named commercial recording.
+## Music sources
+
+- Spotify playlist import reads the public embed page's listed tracks and **uses each recording's public Spotify preview directly** when present. It does not rematch those tracks against Deezer or another catalog.
+- General artist/song search uses Apple’s India catalog. Missing Spotify previews can also use conservative title-and-primary-artist matching there. Deezer is no longer a runtime dependency.
+- No Spotify SDK, login, token extraction, full-song downloads, or private-playlist access is implemented. Commercial recordings are not bundled or stored by the app.
+- Public playlist pages may omit tracks, and some tracks lack previews. Imported results show available counts and missing songs without exposing developer diagnostics in the game interface.
+- Previews are **provider-selected excerpts**. They do not guarantee the opening of the original song. Full original-song opening playback remains unresolved.
+
+The player offers 0.1, 0.5, 1, 2, 5, and 10 seconds, decreasing points, title suggestions, and reveal playback up to 30 seconds. Friends mode alternates turns on the same device. Scores and collections are tab-local.
+
+## Live verification
+
+With a server running:
+
+```sh
+npm run check:catalog -- 'https://open.spotify.com/playlist/YOUR_PLAYLIST_ID' --all
+npm run check:live -- 'https://open.spotify.com/playlist/YOUR_PLAYLIST_ID'
+```
+
+The catalog check reads real metadata and requests actual preview audio bytes. The browser check verifies real import, decoding, 0.1-second stopping, correct answer/scoring, and reveal playback. In cloud Chromium, its route adapter sends real upstream media through the platform's configured proxy; it never substitutes fixture audio. Use `NEEDLE_TEST_URL` to target a different server and `CHROMIUM_PATH` to select another Chromium.
+
+On 2026-10-27, the supplied public playlist returned **21 tracks with 21 exact Spotify previews**. All 21 audio endpoints returned HTTP 206 `audio/mpeg`. An actual Chromium game played a 101 ms clue and a 29.71-second reveal. Apple India search and preview delivery were also verified for the example artists, which are **not** shipped as suggestions or default content. These are current-instance results, not guarantees of all-region availability, future URLs, or every playlist.
+
+Regular browser tests use controlled metadata and the test-only waveform under `tests/fixtures`. They verify error handling, import cancellation, Vercel/static routing regressions, scoring, friend sessions, and layouts from 320 to 1440 pixels. They do not substitute for the live checks above or real Android/Safari testing.
+
+## Developer notes and terms
+
+Keep source decisions, integration limitations, debugging details, and example artists in developer communication/documentation, not public game copy. Errors shown in the interface should be short and actionable; API diagnostics belong in developer logs. Do not add the user's example artists as product presets.
+
+The current Spotify policy page was successfully read during this fix and explicitly prohibits games including trivia quizzes, and restricts preview use. Public availability of a preview URL is **not** permission or Spotify approval. The implementation does not establish compliance with Spotify or Apple terms, and no approved full Spotify integration is claimed. See [integration decisions](docs/MUSIC_INTEGRATION.md) for evidence and remaining scope.
+
+[Mobile](docs/screenshots/mobile.png) · [Desktop](docs/screenshots/desktop.png) · [Playlist picker](docs/screenshots/playlist-picker.png)

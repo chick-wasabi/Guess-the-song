@@ -1,47 +1,41 @@
 import { createCatalogService, fetchUpstream } from "../server/catalog.js";
 const service = createCatalogService();
-let failed = false;
-for (const artist of ["KR$NA", "Seedhe Maut", "Raftaar"]) {
-  try {
-    const { tracks } = await service.search(artist);
-    console.log(`${artist}: ${tracks.length} playable preview results`);
-    if (!tracks.length) {
-      failed = true;
-      continue;
-    }
-    const response = await fetchUpstream(tracks[0].url, {
-      headers: { Range: "bytes=0-4095" },
-      signal: AbortSignal.timeout(15000),
-      redirect: "error",
-    });
-    const contentType = response.headers.get("content-type") || "";
-    if (!response.ok || !/audio|octet-stream/i.test(contentType))
-      throw new Error(
-        `Preview endpoint returned HTTP ${response.status} (${contentType}).`,
-      );
-    const reader = response.body.getReader();
-    const chunk = await reader.read();
-    await reader.cancel();
-    if (chunk.done || !chunk.value.length)
-      throw new Error("Preview contained no audio bytes.");
-    console.log(
-      `  Audio endpoint delivered ${chunk.value.length} bytes (${contentType}). Opening-of-song playback is NOT guaranteed.`,
-    );
-  } catch (error) {
-    failed = true;
-    console.error(`${artist}: ${error.message}`);
-  }
+const input = process.argv.slice(2).find((v) => !v.startsWith("--"));
+if (!input) {
+  console.error(
+    "Usage: npm run check:catalog -- <public Spotify playlist URL or search text> [--all]",
+  );
+  process.exit(1);
 }
-const playlist = process.argv[2];
-if (playlist) {
-  try {
-    const result = await service.playlist(playlist);
-    console.log(
-      `Spotify public metadata: ${result.tracks.length} listed tracks; complete playlist not guaranteed.`,
-    );
-  } catch (error) {
-    failed = true;
-    console.error(`Spotify: ${error.message}`);
-  }
+let tracks;
+if (input.startsWith("https://")) {
+  const playlist = await service.playlist(input);
+  tracks = playlist.tracks.filter((t) => t.preview).map((t) => t.preview);
+  console.log(
+    `Listed: ${playlist.tracks.length}; direct previews: ${tracks.length}. Public-page completeness is not guaranteed.`,
+  );
+} else {
+  ({ tracks } = await service.search(input));
+  console.log(`Search returned ${tracks.length} preview recordings.`);
 }
-process.exitCode = failed ? 1 : 0;
+if (!tracks.length) throw new Error("No playable previews found.");
+const selected = process.argv.includes("--all") ? tracks : tracks.slice(0, 1);
+for (const track of selected) {
+  const response = await fetchUpstream(track.url, {
+    headers: { Range: "bytes=0-4095" },
+    signal: AbortSignal.timeout(15000),
+    redirect: "error",
+  });
+  const type = response.headers.get("content-type") || "";
+  if (!response.ok || !/audio|octet-stream/i.test(type))
+    throw new Error(`Audio delivery failed: HTTP ${response.status} (${type})`);
+  const reader = response.body.getReader();
+  const chunk = await reader.read();
+  await reader.cancel();
+  if (chunk.done || !chunk.value.length)
+    throw new Error("Audio contained no bytes.");
+  console.log(`Audio verified (${response.status}, ${type}): ${track.title}`);
+}
+console.log(
+  `Verified ${selected.length} audio endpoints. Preview positions are provider-selected, not necessarily original-song openings.`,
+);

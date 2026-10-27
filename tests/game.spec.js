@@ -2,22 +2,23 @@ import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 const audio = readFileSync("tests/fixtures/clip.wav");
 const track = (id = 1, title = "No Cap", artist = "KR$NA") => ({
-  id: `deezer:${id}`,
+  id: `apple:${id}`,
   title,
   artist,
-  url: `https://cdnt-preview.dzcdn.net/test-${id}.mp3`,
-  source: "deezer",
-  sourceUrl: `https://www.deezer.com/track/${id}`,
+  url: `https://audio-ssl.itunes.apple.com/test-${id}.m4a`,
+  source: "apple",
+  sourceUrl: `https://music.apple.com/in/song/${id}`,
   clipKind: "preview",
 });
 async function mockCatalog(page, tracks = [track()]) {
   await page.route("**/api/search?*", (r) => r.fulfill({ json: { tracks } }));
-  await page.route("https://cdnt-preview.dzcdn.net/**", (r) =>
+  await page.route("https://audio-ssl.itunes.apple.com/**", (r) =>
     r.fulfill({ contentType: "audio/wav", body: audio }),
   );
 }
 async function loadMusic(page) {
-  await page.getByRole("button", { name: "KR$NA", exact: true }).click();
+  await page.locator("#quick-query").fill("KR$NA");
+  await page.getByRole("button", { name: "Find songs", exact: true }).click();
   await expect(page.locator(".track-row").first()).toBeVisible();
   await page.locator("#select-results").click();
   await page.locator("#play-selection").click();
@@ -63,8 +64,8 @@ test("real audio decoding stops at 0.1 seconds; replaying an old clue cannot res
   await expect(page.locator(".clip-heading h2")).toHaveText("No Cap");
   await expect(page.locator(".clip-heading p")).toHaveText("KR$NA");
   await expect(
-    page.getByRole("link", { name: "Listen on Deezer" }),
-  ).toHaveAttribute("href", "https://www.deezer.com/track/1");
+    page.getByRole("link", { name: "Open in Apple Music" }),
+  ).toHaveAttribute("href", "https://music.apple.com/in/song/1");
   await page.getByRole("button", { name: "Play song reveal" }).click();
   await expect(page.locator(".record")).toHaveClass(/spinning/);
   await page.locator("#next").click();
@@ -149,16 +150,14 @@ test("Spotify import shows partial visibility and unmatched songs before startin
     .fill("https://open.spotify.com/playlist/1234567890123456789012");
   await page.getByRole("button", { name: "Find my songs" }).click();
   await expect(page.locator("#library-status")).toHaveText(
-    "2 listed · 1 unique playable · 1 unmatched",
+    "1 song ready · 1 unavailable",
   );
-  await expect(page.locator(".import-warning")).toContainText("only part");
+  await expect(page.locator(".import-warning")).toHaveCount(0);
   await page.locator("summary").click();
   await expect(page.locator("#import-report li")).toContainText(
     "Unavailable Song",
   );
-  await page
-    .getByRole("button", { name: "Play 1 matched track", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Play 1 song", exact: true }).click();
   await expect(page.locator("#guess")).toBeVisible();
   await expect(page.locator(".side-panel h2")).toContainText("My playlist");
 });
@@ -174,7 +173,8 @@ test("blocked catalog is an actionable error, never a demo fallback", async ({
     }),
   );
   await page.goto("/");
-  await page.getByRole("button", { name: "Raftaar", exact: true }).click();
+  await page.locator("#quick-query").fill("Raftaar");
+  await page.getByRole("button", { name: "Find songs", exact: true }).click();
   await expect(page.locator(".library-error")).toContainText(
     "Check network access",
   );
@@ -185,7 +185,7 @@ test("unavailable audio reports an error without losing the round", async ({
   page,
 }) => {
   await mockCatalog(page);
-  await page.route("https://cdnt-preview.dzcdn.net/**", (r) =>
+  await page.route("https://audio-ssl.itunes.apple.com/**", (r) =>
     r.fulfill({ status: 404, body: "gone" }),
   );
   await page.goto("/");
@@ -232,7 +232,7 @@ test("switching clues while audio loads cannot restart a revealed round", async 
   page,
 }) => {
   await mockCatalog(page);
-  await page.route("https://cdnt-preview.dzcdn.net/**", async (r) => {
+  await page.route("https://audio-ssl.itunes.apple.com/**", async (r) => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     await r.fulfill({ contentType: "audio/wav", body: audio });
   });
@@ -273,9 +273,9 @@ test("pasted names resolve across batches and report unavailable songs", async (
     .fill(Array.from({ length: 9 }, (_, i) => `Artist - Song ${i}`).join("\n"));
   await page.getByRole("button", { name: "Find these songs" }).click();
   await expect(page.locator("#library-status")).toHaveText(
-    "9 listed · 1 unique playable · 7 unmatched",
+    "1 song ready · 6 unavailable",
   );
-  expect(batches).toBe(2);
+  expect(batches).toBe(3);
 });
 
 test("canceling an import cannot replace the current game", async ({
@@ -301,15 +301,100 @@ test("canceling an import cannot replace the current game", async ({
   await page.getByRole("tab", { name: "Track list" }).click();
   await page.locator("#tracklist").fill("Someone - New Song");
   await page.getByRole("button", { name: "Find these songs" }).click();
-  await expect(page.locator("#library-status")).toContainText(
-    "Matching previews",
-  );
+  await expect(page.locator("#library-status")).toContainText("Finding songs");
   await page.getByRole("button", { name: "Cancel import" }).click();
   await expect(page.locator("#library-status")).toContainText(
-    "current game is unchanged",
+    "Import canceled",
   );
   await page.getByRole("button", { name: "Close dialog" }).click();
   await page.waitForTimeout(600);
   await page.locator("#giveup").click();
   await expect(page.locator(".clip-heading h2")).toHaveText("No Cap");
+});
+
+test("entry and playlist picker contain no example artists or developer notes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator("[data-artist]")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("KR$NA");
+  await expect(page.locator("body")).not.toContainText("Raftaar");
+  await expect(page.locator("body")).not.toContainText("Seedhe Maut");
+  await page.locator("#paste-playlist").click();
+  await expect(page.locator("#dialog")).not.toContainText("Deezer");
+  await expect(page.locator("#dialog")).not.toContainText("public page");
+  await expect(page.locator("#dialog")).not.toContainText("No Spotify login");
+  await expect(page.locator("#dialog")).not.toContainText("Node server");
+});
+
+test("HTML returned for an API request shows a short error and logs deployment diagnostics", async ({
+  page,
+}) => {
+  let diagnostic = false;
+  page.on("console", (m) => {
+    if (m.type() === "error" && m.text().includes("[Needle API]"))
+      diagnostic = true;
+  });
+  await page.route("**/api/search?*", (r) =>
+    r.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Static fallback</title>",
+    }),
+  );
+  await page.goto("/");
+  await page.locator("#quick-query").fill("Some artist");
+  await page.getByRole("button", { name: "Find songs", exact: true }).click();
+  await expect(page.locator(".library-error")).toHaveText(
+    "Music is temporarily unavailable. Please try again.",
+  );
+  expect(diagnostic).toBe(true);
+  await expect(page.locator("#dialog")).not.toContainText("Node");
+});
+
+test("playlist uses exact Spotify preview clips without calling a matching service", async ({
+  page,
+}) => {
+  const spotify = {
+    ...track(),
+    id: "spotify:1234567890123456789012",
+    url: "https://p.scdn.co/mp3-preview/" + "a".repeat(40),
+    source: "spotify",
+    sourceUrl: "https://open.spotify.com/track/1234567890123456789012",
+  };
+  let matchingCalls = 0;
+  await page.route("**/api/playlist?*", (r) =>
+    r.fulfill({
+      json: {
+        name: "Exact playlist",
+        tracks: [
+          { title: spotify.title, artist: spotify.artist, preview: spotify },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/resolve", (r) => {
+    matchingCalls++;
+    return r.fulfill({
+      status: 500,
+      json: { error: "Matching should not be called" },
+    });
+  });
+  await page.route("https://p.scdn.co/**", (r) =>
+    r.fulfill({ contentType: "audio/wav", body: audio }),
+  );
+  await page.goto("/");
+  await page.locator("#paste-playlist").click();
+  await page
+    .locator("#playlist-url")
+    .fill("https://open.spotify.com/playlist/1234567890123456789012");
+  await page.getByRole("button", { name: "Find my songs" }).click();
+  await expect(page.locator("#library-status")).toHaveText("1 song ready");
+  expect(matchingCalls).toBe(0);
+  await page.getByRole("button", { name: "Play 1 song", exact: true }).click();
+  await page.locator("#giveup").click();
+  await expect(
+    page.getByRole("link", { name: "Open in Spotify" }),
+  ).toBeVisible();
+  await page.locator("#play").click();
+  await expect(page.locator(".record")).toHaveClass(/spinning/);
 });

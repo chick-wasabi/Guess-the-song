@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node server/index.js",
+    "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "node server/index.js --production",
+    "preview": "vite preview --host 0.0.0.0",
     "test": "node --test src/game.test.js server/catalog.test.js server/http.test.js",
     "test:e2e": "playwright test",
     "start": "node server/index.js --production",
-    "check:catalog": "node scripts/check-catalog.js"
+    "check:catalog": "node scripts/check-catalog.js",
+    "check:live": "node scripts/verify-live.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
