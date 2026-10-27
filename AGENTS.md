@@ -1,0 +1,1 @@
+Read docs/BUILD_PREFERENCES.md before changing release behavior. The standard checks are npm test, npm run build, and npm run test:e2e (Chromium path is configurable). Keep audio rights and external-integration limitations explicit. Each cloud task is already isolated: use the existing checkout; do not create a worktree unless explicitly requested.
