@@ -19,7 +19,7 @@ The fix adds a Vercel catch-all API function and a health endpoint with a deploy
 - Chromium imported all 21 without a cross-catalog matching call. A real preview clue stopped after 101 ms; the correct title earned points; reveal playback ended at 29.71 seconds.
 - The cloud browser used the configured HTTP proxy for actual upstream media; no fixture recording was substituted.
 - Apple India search returned actual recordings for all three example artists, and a real Apple preview delivered audio. Those artist names were removed from product presets and placeholders.
-- The exact Vercel deployment remains to be verified after the patch is deployed; pre-patch health was 404.
+- The actual Vercel deployment of app fix `b0178a5` was verified: `/api/health` returned the expected revision with HTTP 200; actual POST parsing and search returned HTTP 200; the production browser completed the real 21-track import, 101 ms clue, scoring and 29.71-second reveal. Pre-patch health was HTTP 404.
 
 ## Reference investigation and terms
 

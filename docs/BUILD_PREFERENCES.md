@@ -3,7 +3,7 @@
 - Repository: chick-wasabi/Guess-the-song.
 - The user authorized building, committing and pushing this first website concept. Target branch: main (the remote was empty).
 - Future commits and pushes require authorization in the applicable request; no standing automatic-release preference has been established.
-- The existing website is https://guess-the-song-xi.vercel.app/ on Vercel. Main-branch pushes may trigger its Git-linked deployment; verify the live API revision rather than claiming deployment from a successful push.
+- The existing website is https://guess-the-song-xi.vercel.app/ on Vercel. Main-branch pushes trigger its Git-linked deployment (observed for app fix b0178a5). Verify the live API revision rather than claiming deployment from a successful push.
 - The current deliverable is a website. No native Android build or APK workflow is configured.
 - Visual direction: minimal text, immediate gameplay, mobile-first; ivory, charcoal and acid yellow with a record-player centerpiece. Draft identity: Needle.
 - Current scope uses publicly exposed Spotify preview clips without account authentication or a Spotify SDK. Current policy restrictions are documented in docs/MUSIC_INTEGRATION.md; do not claim official approval or a completed full-song Spotify integration.

@@ -23,7 +23,7 @@ npm run test:e2e
 
 The existing site is https://guess-the-song-xi.vercel.app/ . The repository now includes `api/[...path].js`, a Node serverless entry, and `vercel.json`. A static `dist/` deployment alone cannot serve music requests. Deploy this repository with its root directory set to the repository root so Vercel includes the API function. Use the normal `npm run build` command and `dist` output. The serverless handler accepts Vercel's pre-parsed request body as well as standalone Node streams.
 
-`GET /api/health` must return JSON with `status: "ok"`, `apiVersion: 1`, and the Vercel commit revision when supplied by Vercel. Before this fix, the user's deployed API returned HTTP 404. A push is not proof of a successful Vercel deployment: inspect this endpoint and the relevant music routes after deployment.
+`GET /api/health` must return JSON with `status: "ok"`, `apiVersion: 1`, and the Vercel commit revision when supplied by Vercel. Before this fix, the user's deployed API returned HTTP 404. A push is not proof of a successful Vercel deployment: inspect this endpoint and the relevant music routes after deployment. The app fix `b0178a5` was verified live at the existing Vercel URL, including successful health/revision, search, POST handling and an actual 21-track playlist game with real audio.
 
 ## Music sources
 
@@ -44,7 +44,7 @@ npm run check:catalog -- 'https://open.spotify.com/playlist/YOUR_PLAYLIST_ID' --
 npm run check:live -- 'https://open.spotify.com/playlist/YOUR_PLAYLIST_ID'
 ```
 
-The catalog check reads real metadata and requests actual preview audio bytes. The browser check verifies real import, decoding, 0.1-second stopping, correct answer/scoring, and reveal playback. In cloud Chromium, its route adapter sends real upstream media through the platform's configured proxy; it never substitutes fixture audio. Use `NEEDLE_TEST_URL` to target a different server and `CHROMIUM_PATH` to select another Chromium.
+The catalog check reads real metadata and requests actual preview audio bytes. The browser check verifies real import, decoding, 0.1-second stopping, correct answer/scoring, and reveal playback. In cloud Chromium, its route adapter sends real upstream media through the platform's configured proxy; it never substitutes fixture audio. Use `NEEDLE_TEST_URL=https://guess-the-song-xi.vercel.app` to target production, or another server URL and `CHROMIUM_PATH` to select another Chromium.
 
 On 2026-10-27, the supplied public playlist returned **21 tracks with 21 exact Spotify previews**. All 21 audio endpoints returned HTTP 206 `audio/mpeg`. An actual Chromium game played a 101 ms clue and a 29.71-second reveal. Apple India search and preview delivery were also verified for the example artists, which are **not** shipped as suggestions or default content. These are current-instance results, not guarantees of all-region availability, future URLs, or every playlist.
 

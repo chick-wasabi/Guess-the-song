@@ -5,7 +5,8 @@ const playlist = process.argv[2];
 if (!playlist)
   throw new Error("Pass the public Spotify playlist URL to verify.");
 const base = process.env.NEEDLE_TEST_URL || "http://127.0.0.1:5173";
-const response = await fetch(
+const request = base.startsWith("https:") ? fetchUpstream : fetch;
+const response = await request(
   base + "/api/playlist?url=" + encodeURIComponent(playlist),
 );
 const data = await response.json();
@@ -22,25 +23,42 @@ try {
     lastAudioUrl;
   // Chromium in cloud does not inherit the platform HTTP proxy. Deliver real
   // upstream audio through that approved proxy; no fixture audio is substituted.
+  async function bridge(route, media) {
+    const outgoing = route.request();
+    const url = outgoing.url();
+    if (media) lastAudioUrl = url;
+    const requestHeaders = outgoing.headers();
+    const headers = {};
+    for (const name of ["range", "content-type"])
+      if (requestHeaders[name]) headers[name] = requestHeaders[name];
+    const r = await fetchUpstream(url, {
+      method: outgoing.method(),
+      headers,
+      body: outgoing.postDataBuffer() || undefined,
+      signal: AbortSignal.timeout(30000),
+    });
+    if (media) {
+      assert.ok(r.ok);
+      actualAudioRequests++;
+    }
+    const body = Buffer.from(await r.arrayBuffer());
+    const responseHeaders = Object.fromEntries(r.headers);
+    for (const key of [
+      "content-length",
+      "content-encoding",
+      "transfer-encoding",
+      "connection",
+    ])
+      delete responseHeaders[key];
+    await route.fulfill({ status: r.status, headers: responseHeaders, body });
+  }
+  if (base.startsWith("https:"))
+    await page.route(new URL(base).origin + "/**", (route) =>
+      bridge(route, false),
+    );
   await page.route(
     /^https:\/\/(p\.scdn\.co|audio-ssl\.itunes\.apple\.com)\//,
-    async (route) => {
-      lastAudioUrl = route.request().url();
-      const range = route.request().headers().range;
-      const r = await fetchUpstream(lastAudioUrl, {
-        headers: range ? { Range: range } : {},
-        signal: AbortSignal.timeout(20000),
-      });
-      assert.ok(r.ok);
-      const body = Buffer.from(await r.arrayBuffer());
-      actualAudioRequests++;
-      const headers = {};
-      for (const name of ["content-type", "content-range", "accept-ranges"]) {
-        const value = r.headers.get(name);
-        if (value) headers[name] = value;
-      }
-      await route.fulfill({ status: r.status, headers, body });
-    },
+    (route) => bridge(route, true),
   );
   await page.addInitScript(() => {
     window.__plays = [];
