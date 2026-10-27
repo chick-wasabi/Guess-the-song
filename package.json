@@ -4,15 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "node server/index.js",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test src/game.test.js",
-    "test:e2e": "playwright test"
+    "preview": "node server/index.js --production",
+    "test": "node --test src/game.test.js server/catalog.test.js server/http.test.js",
+    "test:e2e": "playwright test",
+    "start": "node server/index.js --production",
+    "check:catalog": "node scripts/check-catalog.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
     "prettier": "^3.9.10",
     "vite": "^7.1.0"
+  },
+  "dependencies": {
+    "sirv": "^3.0.2",
+    "undici": "^8.12.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
   }
 }

@@ -1,46 +1,69 @@
 # Needle
 
-A mobile-first, game-first song guessing website. Play solo or pass the phone between 2–6 people. No backend or account is required.
+A mobile-first song guessing website with artist search, public Spotify playlist metadata import, and Deezer audio previews. Play solo or pass the phone between 2–6 people. No song downloads or Spotify login are required by the implemented flow.
+
+**Live integration status:** the catalog adapter and UI are implemented and tested with controlled provider responses. Cloud egress currently blocks the reference sites, Spotify pages, and Deezer. Actual catalog coverage, playlist extraction against today's Spotify pages, and real-provider audio playback have **not** been verified. Do not describe this as a completed live Spotify integration. Run the live check below after network access is enabled.
 
 ## Run
 
-Node 22.12+ or Node 24 and npm are required.
+Node **22.19+** (Node 24 recommended) and npm are required.
 
 ```sh
 npm ci --cache /workspace/.npm-cache
 npm run dev
 ```
 
-The Vite development server listens on port 5173. `npm run build` creates a static site in `dist/`; `npm run preview` serves that build on port 4173. Deploy `dist/` to a static hosting service when desired. No deployment service is configured.
+This starts the Node music backend and Vite frontend together on port 5173. The proxy-aware upstream client uses the machine's existing proxy configuration and TLS verification. No credentials are needed for the currently implemented public metadata/preview approach. Restart the server after changing backend code.
 
-## Play
+Production:
 
-- Listen to 0.1, 0.5, 1, 2, 5, or 10 seconds. Longer clues reduce the reward from 1,000 to 100 points.
-- Enter the title, optionally using suggestions. Wrong guesses are free; replaying earlier clues does not restore points.
-- After guessing or giving up, listen to up to 30 seconds, then move on.
-- With friends is **pass-and-play on one device**, not online multiplayer. Players alternate across a shared shuffled collection. For a fair comparison, load a multiple of the player count. Scores and songs are tab-local and reset on reload.
-- **Your music** accepts local audio files supported by the browser. Name them `Artist - Title.mp3` (or `.wav`, `.m4a`, `.ogg`, etc.). Files stay on-device; there is no upload or permanent storage. Some formats depend on the browser's codecs. The game plays from the start of each file.
+```sh
+npm run build
+npm start
+```
 
-The provisional name, copy, design and starter catalog are editable. Starter tracks live near the beginning of `src/main.js`; scoring and file-name parsing are in `src/game.js`.
+`npm start` and `npm run preview` serve both `dist/` and `/api/` on port 4173. `PORT` or `--port` changes the port. Deploy to a Node-capable host; a static-only host would need a separately deployed backend. No web deployment is configured.
 
-## Music rights & Spotify
+## Music flow
 
-The bundled WAV files are original synthesized performances of traditional public-domain compositions, plus Beethoven's Ode to Joy. Their synthesis source is `public/audio/generate.py` (Python standard library). They are demonstration melodies, not commercial artist recordings. See `public/audio/LICENSE.md`.
+- **Find music:** search an artist or song, choose recordings with provider previews, and start a session. KR$NA, Seedhe Maut, and Raftaar are editable search shortcuts, not claims of verified catalog coverage.
+- **Spotify link:** validate a public `https://open.spotify.com/playlist/…` URL, fetch its public embed page, extract visible titles/artists, and find conservative title-and-artist matches on Deezer. There is no Spotify audio extraction, Spotify SDK, account login, private-playlist access, or API-token harvesting.
+- **Track list:** paste `Artist - Song` lines, up to 500. This imports names only; it does not require audio downloads.
+- **Import review:** show listed names, unique playable matches, unmatched songs, and the warning about public-page truncation **before** starting a game. A provider outage or canceled import leaves the current collection unchanged. Exact title/artist matching avoids silently substituting a remix or unrelated recording, but can miss legitimate versions or spelling variants.
+- **Gameplay:** hear 0.1, 0.5, 1, 2, 5, or 10 seconds, with rewards decreasing from 1,000 to 100 points. Replaying an earlier clue cannot restore points. After guessing or revealing, play up to 30 seconds and follow the Deezer attribution link if desired.
+- **Friends:** alternate turns on the same device. This is not online multiplayer. For equal turn counts, use a multiple of the player count. Scores and collection state are tab-local and reset on reload.
 
-There is no blanket “30 seconds is allowed” rule. Distributing commercial music, streaming it, and using someone else's recordings require appropriate rights and compliance with the source's terms. Local file access is a development option, not a grant of rights for sharing or public performance.
+**Provider previews are excerpts of real recordings; they can start mid-song.** Playing from the beginning of the preview does not mean playing the beginning of the original song. Full-song opening-tune gameplay and guaranteed coverage of an entire playlist remain unresolved requirements. A preview-only source cannot guarantee either.
 
-Spotify login, playlist importing, previews and playback are intentionally **not implemented**. Spotify has restricted games/trivia uses in its developer policy; a playlist URL alone gives no audio license, and preview availability cannot be assumed. Verify current policy and obtain any required approval before designing a Spotify-powered version. The app's Spotify information dialog explains this instead of offering a nonfunctional login.
+The old demo collection and local-file upload flow have been removed. `tests/fixtures/clip.wav` is a synthetic audio fixture for browser decoding/timing tests only and is not included in the production bundle or exposed as a game collection.
 
-The reference game pages and Spotify policy pages returned proxy HTTP 403 during development, so no current policy review or direct inspection of those sites is claimed. Relevant sources for follow-up:
+## Network and live verification
+
+Required application destinations: `api.deezer.com`, `open.spotify.com`, and provider audio hosts under `*.dzcdn.net`. The environment draft also includes the supplied reference-game domains and official provider-documentation domains for investigation. Saving the draft alone does not apply runtime network changes or publish the environment.
+
+After the environment settings are saved and the prepared environment is published, run:
+
+```sh
+npm run check:catalog
+npm run check:catalog -- 'https://open.spotify.com/playlist/YOUR_PUBLIC_PLAYLIST_ID'
+```
+
+The check searches the three requested artists, requires preview results, and requests audio bytes through the configured proxy with TLS verification. Passing verifies basic endpoint access and audio delivery; it does not establish source terms, every catalog match, original-song opening alignment, or browser playback. Then verify search, playlist import, and preview playback in a real browser against the live providers.
+
+## Evidence and source limitations
+
+Direct requests to Songless, the linked Play Store listing, Spotify policy, Apple Search, and Deezer endpoints received cloud-proxy HTTP 403. Their current pages and the exact reference apps' audio implementations were not inspected successfully. A proxy-aware Node client successfully reached `registry.npmjs.org`, confirming that the client uses the supported proxy route; the Deezer destination remained blocked.
+
+The published [`spotify-url-info` 3.3.3](https://www.npmjs.com/package/spotify-url-info) documentation and source were inspected through the npm registry. They document public embed metadata extraction without an API key, explicitly limit `getTracks` to the first 100 tracks, and warn that the schema can change. Our focused parser handles the documented public embed data formats but is not an official Spotify API and still needs a live compatibility check. No dependency on that package is installed.
+
+Provider previews and public metadata are not an unrestricted music license. Current provider terms and suitability for this use have not been verified; preview access alone is not approval. No claim is made that Spotify Premium licenses a third-party trivia game. Useful original sources to review when network access works:
 
 - https://developer.spotify.com/policy
-- https://developer.spotify.com/documentation/web-api
+- https://developers.deezer.com/api/search
 - https://playdaily.org/songless
 - https://play.google.com/store/apps/details?id=com.ricocorp.spotiguess
 
-A commercial catalog and online rooms are future scope. No authentication, third-party API keys, analytics, or remote fonts are used by this draft.
-
-## Validate
+## Validation
 
 ```sh
 npm test
@@ -48,10 +71,10 @@ npm run build
 npm run test:e2e
 ```
 
-The browser suite uses the environment's `/usr/bin/chromium`. Set `CHROMIUM_PATH` to use another installed Chromium. On machines without one, install a supported Chromium browser first; the Playwright CDN was blocked in the cloud environment. The Vite server starts automatically for tests if absent.
+The browser suite uses `/usr/bin/chromium`; set `CHROMIUM_PATH` for another installed Chromium. It starts the full development server if needed. Server/logic tests verify URL validation, public data formats, safe preview sources, conservative matching, provider failures, HTTP routes, and scoring. Browser tests use mocked provider metadata plus a test-only waveform to verify the import UI, real browser audio decoding/timing, missing matches, batching, cancellation, playback failures, scores, friend sessions, and 320/360/390/430/1440-pixel layouts. These tests do **not** prove live provider compatibility or music coverage, and are not real Android or Safari tests.
 
-Tests cover real clip playback and stopping, scoring after replaying an earlier clue, local-file import, guesses, reveal playback, results/restart, a complete pass-and-play session, and overflow at 320/360/390/430/1440 pixels. These are desktop Chromium emulations, not real Android-device or Safari tests.
+## Screenshots
 
-## First-draft screenshots
+[Mobile entry](docs/screenshots/mobile.png) · [Desktop entry](docs/screenshots/desktop.png) · [Game layout](docs/screenshots/game-mobile.png)
 
-[Mobile](docs/screenshots/mobile.png) · [Desktop](docs/screenshots/desktop.png)
+The game-layout screenshot uses controlled test metadata. It demonstrates the interface, not successful live playback of the named commercial recording.

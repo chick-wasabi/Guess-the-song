@@ -5,7 +5,7 @@ export function normalize(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+    .replace(/[^\p{L}\p{M}\p{N}]/gu, "");
 }
 export function matches(guess, song) {
   return [
@@ -14,16 +14,6 @@ export function matches(guess, song) {
     `${song.title} ${song.artist}`,
     ...(song.aliases || []),
   ].some((value) => normalize(value) === normalize(guess));
-}
-export function trackFromFile(file, url) {
-  const base = file.name.replace(/\.[^.]+$/, "");
-  const parts = base.split(" - ");
-  return {
-    id: url,
-    title: parts.length > 1 ? parts.slice(1).join(" - ") : base,
-    artist: parts.length > 1 ? parts[0] : "Your library",
-    url,
-  };
 }
 export function shuffled(items) {
   const result = [...items];
